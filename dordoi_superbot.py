@@ -16,7 +16,7 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
-BOT_TOKEN = "ВСТАВЬТЕ_ТОКЕН_ОТ_BOTFATHER_СЮДА"
+BOT_TOKEN = "8867783468:AAGvaT3xOUGCfbY7pdSEsJMzaEo6rdVCacI"
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
