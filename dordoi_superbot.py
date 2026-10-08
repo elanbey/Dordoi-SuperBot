@@ -1,8 +1,10 @@
+import os
 import asyncio
 import logging
 import urllib.parse
 import aiohttp
 import aiosqlite
+from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -16,16 +18,14 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
-import os
-from aiohttp import web
-
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8867783468:AAGvaT3xOUGCfbY7pdSEsJMzaEo6rdVCacI")
+# Токен берется из настроек Render (Environment) или вставляется вручную в кавычки
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "ВСТАВЬТЕ_ТОКЕН_ОТ_BOTFATHER_СЮДА")
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# --- ВЕБ-СЕРВЕР ДЛЯ RENDER (РЕШАЕТ ОШИБКУ "No open ports detected") ---
+# --- ВЕБ-СЕРВЕР ДЛЯ RENDER (РЕШАЕТ ПРОБЛЕМУ С ПОРТАМИ) ---
 async def handle_ping(request):
     return web.Response(text="OK - Dordoi SuperBot is running!")
 
@@ -38,7 +38,7 @@ async def start_healthcheck_server():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    logging.info(f"🌐 Healthcheck web server listening on port {port}")
+    logging.info(f"🌐 Healthcheck web server listening on 0.0.0.0:{port}")
 
 # --- БЕСПЛАТНЫЙ АВТОПЕРЕВОДЧИК ТЕКСТА ---
 async def translate_text(text: str, target_lang: str) -> str:
@@ -60,7 +60,7 @@ async def translate_text(text: str, target_lang: str) -> str:
         logging.warning(f"Translation error: {e}")
     return text
 
-# --- БАЗА ДАННЫХ ---
+# --- БАЗА ДАННЫХ SQLITE ---
 async def init_db():
     async with aiosqlite.connect("dordoi_master.db") as db:
         await db.execute("""
@@ -170,6 +170,7 @@ SECTORS = [
     "Восток / 东方", "Северная стоянка / 北停车场"
 ]
 
+# --- FSM ОФОРМЛЕНИЯ ЗАКАЗА ---
 class OrderFlow(StatesGroup):
     order_type = State()
     sector = State()
@@ -177,6 +178,7 @@ class OrderFlow(StatesGroup):
     details = State()
     contact = State()
 
+# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ И КЛАВИАТУРЫ ---
 async def get_user_lang(user_id: int) -> str:
     async with aiosqlite.connect("dordoi_master.db") as db:
         async with db.execute("SELECT lang FROM users WHERE user_id = ?", (user_id,)) as cur:
@@ -217,6 +219,7 @@ def get_sectors_kb():
         buttons.append(row)
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
+# --- ХЕНДЛЕРЫ ---
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     await message.answer("Тилди тандаңыз / Выберите язык / 请选择语言:", reply_markup=get_lang_kb())
@@ -354,6 +357,7 @@ async def process_contact(message: types.Message, state: FSMContext):
     sector = data['sector']
     location = data['location']
 
+    # Автоперевод деталей на русский для универсальности понимания
     translated_details = await translate_text(raw_details, target_lang='ru')
 
     order_id = None
@@ -374,6 +378,7 @@ async def process_contact(message: types.Message, state: FSMContext):
         order_id = cur.lastrowid
         await db.commit()
 
+        # Ищем исполнителей по этой специальности
         async with db.execute("SELECT user_id, lang FROM users WHERE role = ? AND is_active = 1", (order_type,)) as c:
             executors = await c.fetchall()
 
@@ -381,6 +386,7 @@ async def process_contact(message: types.Message, state: FSMContext):
     t = I18N[lang]
     await message.answer(t['order_created'], reply_markup=get_main_menu(lang, 'seller'))
 
+    # Формируем и рассылаем карточки исполнителям
     type_labels = {
         'porter': ("🛒 ТАЧКА / БАУЛ", "叫板车"),
         'food': ("🍲 ТАМАК / ЕДА", "外卖订餐"),
@@ -445,13 +451,23 @@ async def handle_take_order(call: types.CallbackQuery):
     except Exception:
         pass
 
+# --- ГЛАВНАЯ ТОЧКА ВХОДА С АВТОСБРОСОМ КОНФЛИКТОВ И ВЕБ-СЕРВЕРОМ ---
 async def main():
     await init_db()
-    # Если запущен на Render как Web Service - поднимаем healthcheck порт
+    
+    # 1. Если Render запустил как Web Service — открываем порт для прохождения проверок
     if os.environ.get("PORT"):
         await start_healthcheck_server()
+
+    # 2. Сбрасываем старый webhook и все зависшие сессии других серверов
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        logging.info("🧹 Старые сессии и вебхуки успешно сброшены")
+    except Exception as e:
+        logging.warning(f"Ошибка при очистке вебхука: {e}")
+
     print("🚀 Dordoi SuperBot запущен и готов к работе!")
-    await dp.start_polling(bot)
+    await dp.start_polling(bot, drop_pending_updates=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
