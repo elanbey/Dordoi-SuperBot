@@ -1,33 +1,5 @@
 import os
 import asyncio
-from aiohttp import web
-
-# Простейший HTTP-сервер для Render
-async def handle(request):
-    return web.Response(text="Bot is running!")
-
-app = web.Application()
-app.router.add_get("/", handle)
-
-async def start_web_server():
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.environ.get("PORT", 10000))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-
-# Измените вашу основную функцию запуска, чтобы она запускала и сервер, и бота:
-async def main():
-    # Запускаем веб-сервер для Render
-    await start_web_server()
-    # Запуск вашего бота (например, dp.start_polling(bot))
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-
-import os
-import asyncio
 import logging
 import urllib.parse
 import aiohttp
@@ -96,7 +68,7 @@ async def init_db():
                 user_id INTEGER PRIMARY KEY,
                 full_name TEXT,
                 phone TEXT,
-                role TEXT DEFAULT 'seller', -- seller, porter, food, supplies, cargo
+                role TEXT DEFAULT 'seller',
                 lang TEXT DEFAULT 'ky',
                 is_active INTEGER DEFAULT 1
             )
@@ -104,7 +76,7 @@ async def init_db():
         await db.execute("""
             CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                order_type TEXT,            -- porter, food, supplies, cargo
+                order_type TEXT,
                 seller_id INTEGER,
                 seller_name TEXT,
                 seller_phone TEXT,
@@ -113,7 +85,7 @@ async def init_db():
                 details TEXT,
                 details_translated TEXT,
                 executor_id INTEGER DEFAULT NULL,
-                status TEXT DEFAULT 'pending', -- pending, taken, completed
+                status TEXT DEFAULT 'pending',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -198,7 +170,6 @@ SECTORS = [
     "Восток / 东方", "Северная стоянка / 北停车场"
 ]
 
-# --- FSM ОФОРМЛЕНИЯ ЗАКАЗА ---
 class OrderFlow(StatesGroup):
     order_type = State()
     sector = State()
@@ -206,7 +177,6 @@ class OrderFlow(StatesGroup):
     details = State()
     contact = State()
 
-# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ И КЛАВИАТУРЫ ---
 async def get_user_lang(user_id: int) -> str:
     async with aiosqlite.connect("dordoi_master.db") as db:
         async with db.execute("SELECT lang FROM users WHERE user_id = ?", (user_id,)) as cur:
@@ -247,7 +217,6 @@ def get_sectors_kb():
         buttons.append(row)
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-# --- ХЕНДЛЕРЫ ---
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     await message.answer("Тилди тандаңыз / Выберите язык / 请选择语言:", reply_markup=get_lang_kb())
@@ -385,7 +354,6 @@ async def process_contact(message: types.Message, state: FSMContext):
     sector = data['sector']
     location = data['location']
 
-    # Автоперевод деталей на русский для универсальности понимания
     translated_details = await translate_text(raw_details, target_lang='ru')
 
     order_id = None
@@ -406,7 +374,6 @@ async def process_contact(message: types.Message, state: FSMContext):
         order_id = cur.lastrowid
         await db.commit()
 
-        # Ищем исполнителей по этой специальности
         async with db.execute("SELECT user_id, lang FROM users WHERE role = ? AND is_active = 1", (order_type,)) as c:
             executors = await c.fetchall()
 
@@ -414,7 +381,6 @@ async def process_contact(message: types.Message, state: FSMContext):
     t = I18N[lang]
     await message.answer(t['order_created'], reply_markup=get_main_menu(lang, 'seller'))
 
-    # Формируем и рассылаем карточки исполнителям
     type_labels = {
         'porter': ("🛒 ТАЧКА / БАУЛ", "叫板车"),
         'food': ("🍲 ТАМАК / ЕДА", "外卖订餐"),
@@ -456,46 +422,4 @@ async def handle_take_order(call: types.CallbackQuery):
         async with db.execute("SELECT status, seller_id FROM orders WHERE id = ?", (order_id,)) as cur:
             row = await cur.fetchone()
             if not row or row[0] != 'pending':
-                await call.answer(wt['order_already_taken'], show_alert=True)
-                return
-            
-            seller_id = row[1]
-            await db.execute("UPDATE orders SET status = 'taken', executor_id = ? WHERE id = ?", (executor_id, order_id))
-            await db.commit()
-
-    await call.message.edit_reply_markup(reply_markup=None)
-    await call.answer(wt['order_taken'])
-    await call.message.answer(f"✅ Заказ #{order_id} бекитилди / закреплен за вами!")
-
-    seller_lang = await get_user_lang(seller_id)
-    st = I18N[seller_lang]
-    seller_msg = st['notify_seller'].format(
-        name=call.from_user.full_name,
-        phone=call.from_user.username or "в Telegram",
-        id=order_id
-    )
-    try:
-        await bot.send_message(seller_id, seller_msg, parse_mode="HTML")
-    except Exception:
-        pass
-
-# --- ГЛАВНАЯ ТОЧКА ВХОДА С АВТОСБРОСОМ КОНФЛИКТОВ И ВЕБ-СЕРВЕРОМ ---
-async def main():
-    await init_db()
-    
-    # 1. Если Render запустил как Web Service — открываем порт для прохождения проверок
-    if os.environ.get("PORT"):
-        await start_healthcheck_server()
-
-    # 2. Сбрасываем старый webhook и все зависшие сессии других серверов
-    try:
-        await bot.delete_webhook(drop_pending_updates=True)
-        logging.info("🧹 Старые сессии и вебхуки успешно сброшены")
-    except Exception as e:
-        logging.warning(f"Ошибка при очистке вебхука: {e}")
-
-    print("🚀 Dordoi SuperBot запущен и готов к работе!")
-    await dp.start_polling(bot, drop_pending_updates=True)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+                await call
