@@ -15,17 +15,15 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
 )
 
-# Токен берется из настроек Render (Environment) или вставляется вручную в кавычки
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8867783468:AAFmewCfTPALD7s3hZqCDUu0b6194MT1WMA")
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# --- ВЕБ-СЕРВЕР ДЛЯ RENDER (РЕШАЕТ ПРОБЛЕМУ С ПОРТАМИ) ---
+# Веб-сервер для прохождения проверок Render на Web Service
 async def handle_ping(request):
     return web.Response(text="OK - Dordoi SuperBot is running!")
 
@@ -40,9 +38,7 @@ async def start_healthcheck_server():
     await site.start()
     logging.info(f"🌐 Healthcheck web server listening on 0.0.0.0:{port}")
 
-# --- БЕСПЛАТНЫЙ АВТОПЕРЕВОДЧИК ТЕКСТА ---
 async def translate_text(text: str, target_lang: str) -> str:
-    """Переводит произвольный текст без API ключей через защищенный шлюз"""
     if not text or len(text.strip()) == 0:
         return text
     try:
@@ -60,7 +56,6 @@ async def translate_text(text: str, target_lang: str) -> str:
         logging.warning(f"Translation error: {e}")
     return text
 
-# --- БАЗА ДАННЫХ SQLITE ---
 async def init_db():
     async with aiosqlite.connect("dordoi_master.db") as db:
         await db.execute("""
@@ -91,7 +86,6 @@ async def init_db():
         """)
         await db.commit()
 
-# --- СЛОВАРИ И ЛОКАЛИЗАЦИЯ (RU / KY / ZH) ---
 I18N = {
     'ky': {
         'welcome': "👋 Дордой базарынын ыкчам кызматына кош келиңиз!\nКеректүү кызматты тандаңыз:",
@@ -422,4 +416,42 @@ async def handle_take_order(call: types.CallbackQuery):
         async with db.execute("SELECT status, seller_id FROM orders WHERE id = ?", (order_id,)) as cur:
             row = await cur.fetchone()
             if not row or row[0] != 'pending':
-                await call
+                await call.answer(wt['order_already_taken'], show_alert=True)
+                return
+            
+            seller_id = row[1]
+            await db.execute("UPDATE orders SET status = 'taken', executor_id = ? WHERE id = ?", (executor_id, order_id))
+            await db.commit()
+
+    await call.message.edit_reply_markup(reply_markup=None)
+    await call.answer(wt['order_taken'])
+    await call.message.answer(f"✅ Заказ #{order_id} бекитилди / закреплен за вами!")
+
+    seller_lang = await get_user_lang(seller_id)
+    st = I18N[seller_lang]
+    seller_msg = st['notify_seller'].format(
+        name=call.from_user.full_name,
+        phone=call.from_user.username or "в Telegram",
+        id=order_id
+    )
+    try:
+        await bot.send_message(seller_id, seller_msg, parse_mode="HTML")
+    except Exception:
+        pass
+
+async def main():
+    await init_db()
+    # Запускаем веб-сервер, чтобы Render не завершал процесс
+    await start_healthcheck_server()
+
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        logging.info("🧹 Старые сессии и вебхуки успешно сброшены")
+    except Exception as e:
+        logging.warning(f"Ошибка при очистке вебхука: {e}")
+
+    print("🚀 Dordoi SuperBot запущен и готов к работе!")
+    await dp.start_polling(bot, drop_pending_updates=True)
+
+if __name__ == "__main__":
+    asyncio.run(main())
