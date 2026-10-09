@@ -1,5 +1,33 @@
 import os
 import asyncio
+from aiohttp import web
+
+# Простейший HTTP-сервер для Render
+async def handle(request):
+    return web.Response(text="Bot is running!")
+
+app = web.Application()
+app.router.add_get("/", handle)
+
+async def start_web_server():
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+# Измените вашу основную функцию запуска, чтобы она запускала и сервер, и бота:
+async def main():
+    # Запускаем веб-сервер для Render
+    await start_web_server()
+    # Запуск вашего бота (например, dp.start_polling(bot))
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+import os
+import asyncio
 import logging
 import urllib.parse
 import aiohttp
