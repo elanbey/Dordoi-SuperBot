@@ -19,7 +19,7 @@ from aiogram.types import (
 )
 
 # Токен берется из настроек Render (Environment) или вставляется вручную в кавычки
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "ВСТАВЬТЕ_ТОКЕН_ОТ_BOTFATHER_СЮДА")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8867783468:AAFmewCfTPALD7s3hZqCDUu0b6194MT1WMA")
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
