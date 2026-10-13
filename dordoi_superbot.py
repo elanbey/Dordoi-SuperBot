@@ -23,7 +23,7 @@ from aiohttp import web
 # ТОКЕН БОТА: Укажите токен, полученный от @BotFather в Telegram
 # ВНИМАНИЕ: В данном коде НЕТ рекламы, спама и принудительных подписок на каналы!
 # ==============================================================================
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8867783468:AAGvaT3xOUGCfbY7pdSEsJMzaEo6rdVCacI")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8867783468:AAHRzUVH2oeHyUCNHedkqjNtnkQbAQCWtTk")
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
