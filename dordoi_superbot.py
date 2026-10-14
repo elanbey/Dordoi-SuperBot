@@ -32,7 +32,7 @@ except ImportError:
 # ТОКЕН БОТА: Укажите токен, полученный от @BotFather в Telegram
 # ВНИМАНИЕ: В данном коде НЕТ рекламы, спама и принудительных подписок на каналы!
 # ==============================================================================
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "AAHWN6srbzEIUgPpwrVg0PcWu4GFjnFuc5Y")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8867783468:AAHWN6srbzEIUgPpwrVg0PcWu4GFjnFuc5Y")
 
 logging.basicConfig(level=logging.INFO)
 
